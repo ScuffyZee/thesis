@@ -1,14 +1,10 @@
 import { google } from 'googleapis'
 
-const auth = new google.auth.GoogleAuth({
-  credentials: {
-    client_email: process.env.GOOGLE_CLIENT_EMAIL,
-    private_key: process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
-  },
-  scopes: ['https://www.googleapis.com/auth/spreadsheets.readonly'],
-})
-
-const sheets = google.sheets({ version: 'v4', auth })
+function getPrivateKey() {
+  const key = process.env.GOOGLE_PRIVATE_KEY || ''
+  // Handle both escaped \\n (local) and literal newlines (Vercel)
+  return key.includes('\\n') ? key.replace(/\\n/g, '\n') : key
+}
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -22,6 +18,16 @@ export default async function handler(req, res) {
   }
 
   try {
+    const auth = new google.auth.GoogleAuth({
+      credentials: {
+        client_email: process.env.GOOGLE_CLIENT_EMAIL,
+        private_key: getPrivateKey(),
+      },
+      scopes: ['https://www.googleapis.com/auth/spreadsheets.readonly'],
+    })
+
+    const sheets = google.sheets({ version: 'v4', auth })
+
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId: process.env.GOOGLE_AUTH_SHEET_ID,
       range: 'Sheet1!A:D', // Employee ID | Password | Role | Name
@@ -43,11 +49,11 @@ export default async function handler(req, res) {
     return res.status(200).json({
       success: true,
       employeeId: id,
-      role: role?.toLowerCase(), // normalize: "admin"/"teamlead" or "employee"
+      role: role?.toLowerCase(),
       name: name || id,
     })
   } catch (error) {
-    console.error('Auth sheet error:', error)
-    return res.status(500).json({ success: false, error: 'Failed to reach authentication sheet' })
+    console.error('Auth sheet error:', error.message)
+    return res.status(500).json({ success: false, error: error.message })
   }
 }
